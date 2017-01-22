@@ -32,8 +32,6 @@
 test*
 !test.cxx
 *.pyc
-*.swp
-*.swo
 /log
 /ld
 

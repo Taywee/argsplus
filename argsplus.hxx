@@ -17,6 +17,7 @@ namespace argsplus {
          template <typename...> class Set = std::unordered_set>
     class ArgumentParser {
         private:
+            String _prog;
             String _description;
             String _epilog;
             String _long_prefix;
@@ -148,8 +149,7 @@ namespace argsplus {
                     template <typename ShortIt, typename LongIt>
                         Matcher(ShortIt shortFlagsStart, ShortIt shortFlagsEnd, LongIt longFlagsStart, LongIt longFlagsEnd) :
                             shortFlags(shortFlagsStart, shortFlagsEnd),
-                            longFlags(longFlagsStart, longFlagsEnd)
-                {}
+                            longFlags(longFlagsStart, longFlagsEnd) {}
 
                     /** Specify short and long flags separately as iterables
                      *
@@ -157,8 +157,8 @@ namespace argsplus {
                      */
                     template <typename Short, typename Long>
                         Matcher(Short &&shortIn, Long &&longIn) :
-                            shortFlags(std::begin(shortIn), std::end(shortIn)), longFlags(std::begin(longIn), std::end(longIn))
-                {}
+                            shortFlags(std::begin(shortIn), std::end(shortIn)),
+                            longFlags(std::begin(longIn), std::end(longIn)) {}
 
                     /** Specify a mixed single initializer-list of both short and long flags
                      *
@@ -173,16 +173,19 @@ namespace argsplus {
                      *     args::Matcher{"foo", 'f', 'F', "FoO"}
                      */
                     Matcher(std::initializer_list<EitherFlag> in) :
-                        shortFlags(EitherFlag::GetShort(in)), longFlags(EitherFlag::GetLong(in)) {}
+                        shortFlags(EitherFlag::GetShort(in)),
+                        longFlags(EitherFlag::GetLong(in)) {}
 
-                    Matcher(Matcher &&other) : shortFlags(std::move(other.shortFlags)), longFlags(std::move(other.longFlags))
-                {}
+                    Matcher(Matcher &&other) :
+                        shortFlags(std::move(other.shortFlags)),
+                        longFlags(std::move(other.longFlags)) {}
 
                     ~Matcher() {}
             };
 
         public:
-            ArgumentParser(const String &description = String{}, const String &epilog = String{}) :
+            ArgumentParser(const String &description = String{}, const String &epilog = String{}, const String &prog = String{}) :
+                _prog(prog),
                 _description(description),
                 _epilog(epilog),
                 _long_prefix("--"),
@@ -202,6 +205,256 @@ namespace argsplus {
                 auto opt = new Option<Value>(name);
                 _options.emplace_back(opt);
                 return *opt;
+            }
+
+            /** Parse all arguments.
+             *
+             * \param begin an iterator to the beginning of the argument list
+             * \param end an iterator to the past-the-end element of the argument list
+             * \return the iterator after the last parsed value.  Only useful for kick-out
+             */
+            template <typename It>
+            It ParseArgs(It begin, It end)
+            {
+                bool terminated = false;
+
+                // Check all arg chunks
+                for (auto it = begin; it != end; ++it)
+                {
+                    const auto &chunk = *it;
+
+                    if (!terminated && chunk == _option_terminator)
+                    {
+                        terminated = true;
+                    // If a long arg was found
+                    } else if (!terminated && chunk.find(_long_prefix) == 0 && chunk.size() > _long_prefix.size())
+                    {
+                        const auto argchunk = chunk.substr(_long_prefix.size());
+                        // Try to separate it, in case of a separator:
+                        const auto separator = _long_separator.empty() ? argchunk.npos : argchunk.find(_long_separator);
+                        // If the separator is in the argument, separate it.
+                        const auto arg = (separator != argchunk.npos ?
+                            std::string(argchunk, 0, separator)
+                            : argchunk);
+
+                        if (auto base = Match(arg))
+                        {
+                            if (auto argbase = dynamic_cast<ValueFlagBase *>(base))
+                            {
+                                if (separator != argchunk.npos)
+                                {
+                                    if (_joined_long)
+                                    {
+                                        argbase->ParseValue(argchunk.substr(separator + _long_separator.size()));
+                                    } else
+                                    {
+#ifdef ARGS_NOEXCEPT
+                                        error = Error::Parse;
+                                        return it;
+#else
+                                        std::ostringstream problem;
+                                        problem << "Flag '" << arg << "' was passed a joined argument, but these are disallowed";
+                                        throw ParseError(problem.str());
+#endif
+                                    }
+                                } else
+                                {
+                                    ++it;
+                                    if (it == end)
+                                    {
+#ifdef ARGS_NOEXCEPT
+                                        error = Error::Parse;
+                                        return it;
+#else
+                                        std::ostringstream problem;
+                                        problem << "Flag '" << arg << "' requires an argument but received none";
+                                        throw ParseError(problem.str());
+#endif
+                                    }
+
+                                    if (_separate_long)
+                                    {
+                                        argbase->ParseValue(*it);
+                                    } else
+                                    {
+#ifdef ARGS_NOEXCEPT
+                                        error = Error::Parse;
+                                        return it;
+#else
+                                        std::ostringstream problem;
+                                        problem << "Flag '" << arg << "' was passed a separate argument, but these are disallowed";
+                                        throw ParseError(problem.str());
+#endif
+                                    }
+                                }
+                            } else if (separator != argchunk.npos)
+                            {
+#ifdef ARGS_NOEXCEPT
+                                error = Error::Parse;
+                                return it;
+#else
+                                std::ostringstream problem;
+                                problem << "Passed an argument into a non-argument flag: " << chunk;
+                                throw ParseError(problem.str());
+#endif
+                            }
+
+                            if (base->KickOut())
+                            {
+                                return ++it;
+                            }
+                        } else
+                        {
+#ifdef ARGS_NOEXCEPT
+                            error = Error::Parse;
+                            return it;
+#else
+                            std::ostringstream problem;
+                            problem << "Flag could not be matched: " << arg;
+                            throw ParseError(problem.str());
+#endif
+                        }
+                        // Check short args
+                    } else if (!terminated && chunk.find(_short_prefix) == 0 && chunk.size() > _short_prefix.size())
+                    {
+                        const auto argchunk = chunk.substr(_short_prefix.size());
+                        for (auto argit = std::begin(argchunk); argit != std::end(argchunk); ++argit)
+                        {
+                            const auto arg = *argit;
+
+                            if (auto base = Match(arg))
+                            {
+                                if (auto argbase = dynamic_cast<ValueFlagBase *>(base))
+                                {
+                                    const std::string value(++argit, std::end(argchunk));
+                                    if (!value.empty())
+                                    {
+                                        if (_joined_short)
+                                        {
+                                            argbase->ParseValue(value);
+                                        } else
+                                        {
+#ifdef ARGS_NOEXCEPT
+                                            error = Error::Parse;
+                                            return it;
+#else
+                                            std::ostringstream problem;
+                                            problem << "Flag '" << arg << "' was passed a joined argument, but these are disallowed";
+                                            throw ParseError(problem.str());
+#endif
+                                        }
+                                    } else
+                                    {
+                                        ++it;
+                                        if (it == end)
+                                        {
+#ifdef ARGS_NOEXCEPT
+                                            error = Error::Parse;
+                                            return it;
+#else
+                                            std::ostringstream problem;
+                                            problem << "Flag '" << arg << "' requires an argument but received none";
+                                            throw ParseError(problem.str());
+#endif
+                                        }
+
+                                        if (_separate_short)
+                                        {
+                                            argbase->ParseValue(*it);
+                                        } else
+                                        {
+#ifdef ARGS_NOEXCEPT
+                                            error = Error::Parse;
+                                            return it;
+#else
+                                            std::ostringstream problem;
+                                            problem << "Flag '" << arg << "' was passed a separate argument, but these are disallowed";
+                                            throw ParseError(problem.str());
+#endif
+                                        }
+                                    }
+                                    // Because this argchunk is done regardless
+                                    break;
+                                }
+
+                                if (base->KickOut())
+                                {
+                                    return ++it;
+                                }
+                            } else
+                            {
+#ifdef ARGS_NOEXCEPT
+                                error = Error::Parse;
+                                return it;
+#else
+                                std::ostringstream problem;
+                                problem << "Flag could not be matched: '" << arg << "'";
+                                throw ParseError(problem.str());
+#endif
+                            }
+                        }
+                    } else
+                    {
+                        auto pos = GetNextPositional();
+                        if (pos)
+                        {
+                            pos->ParseValue(chunk);
+
+                            if (pos->KickOut())
+                            {
+                                return ++it;
+                            }
+                        } else
+                        {
+#ifdef ARGS_NOEXCEPT
+                            error = Error::Parse;
+                            return it;
+#else
+                            std::ostringstream problem;
+                            problem << "Passed in argument, but no positional arguments were ready to receive it: " << chunk;
+                            throw ParseError(problem.str());
+#endif
+                        }
+                    }
+                }
+                if (!Matched())
+                {
+#ifdef ARGS_NOEXCEPT
+                    error = Error::Validation;
+#else
+                    std::ostringstream problem;
+                    problem << "Group validation failed somewhere!";
+                    throw ValidationError(problem.str());
+#endif
+                }
+                return end;
+            }
+
+            /** Parse all arguments.
+             *
+             * \param args an iterable of the arguments
+             * \return the iterator after the last parsed value.  Only useful for kick-out
+             */
+            template <typename T>
+            auto ParseArgs(const T &args) -> decltype(std::begin(args))
+            {
+                return ParseArgs(std::begin(args), std::end(args));
+            }
+
+            /** Convenience function to parse the CLI from argc and argv
+             *
+             * Just assigns the program name and vectorizes arguments for passing into ParseArgs()
+             *
+             * \return whether or not all arguments were parsed.  This works for detecting kick-out, but is generally useless as it can't do anything with it.
+             */
+            bool ParseCLI(const int argc, const char * const * argv)
+            {
+                if (_prog.empty())
+                {
+                    _prog = String(argv[0]);
+                }
+                const List<String> args(argv + 1, argv + argc);
+                return ParseArgs(args) == std::end(args);
             }
     };
 }

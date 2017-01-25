@@ -1,0 +1,29 @@
+---
+# vim: ft=yaml
+BasedOnStyle: LLVM
+Language: Cpp
+AccessModifierOffset: 0
+AlignAfterOpenBracket: false
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignOperands: false
+AlignTrailingComments: false
+AllowShortBlocksOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+Cpp11BracedListStyle: true
+IndentWidth: 4
+SortIncludes: true
+ReflowComments: true
+PointerAlignment: Right
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 1
+SpacesInAngles: false
+SpacesInParentheses: false
+AllowShortIfStatementsOnASingleLine: false
+BreakStringLiterals: false
+AlwaysBreakTemplateDeclarations: true
+SpacesInSquareBrackets: false
+Standard: Cpp11
+---

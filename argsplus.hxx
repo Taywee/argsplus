@@ -4,459 +4,419 @@
 #ifndef ARGSPLUS_HXX
 #define ARGSPLUS_HXX
 
-#include <string>
-#include <vector>
-#include <memory>
-#include <unordered_set>
 #include <initializer_list>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_set>
+#include <vector>
 
 namespace argsplus {
-    template <typename String = std::string,
-         typename Char = char,
-         template <typename...> class List = std::vector,
-         template <typename...> class Set = std::unordered_set>
-    class ArgumentParser {
+template <typename String = std::string, typename Char = char,
+    template <typename...> class List = std::vector,
+    template <typename...> class Set = std::unordered_set>
+class ArgumentParser {
+    private:
+    /** A simple unified option type for unified initializer lists for the
+     * Matcher class.
+    */
+    struct EitherFlag {
+        const bool isShort;
+        const Char shortFlag;
+        const String longFlag;
+        EitherFlag(const String &flag)
+            : isShort(false), shortFlag(), longFlag(flag) {}
+        EitherFlag(const Char *flag)
+            : isShort(false), shortFlag(), longFlag(flag) {}
+        EitherFlag(const Char flag)
+            : isShort(true), shortFlag(flag), longFlag() {}
+
+        /** Get just the long flags from an initializer list of EitherFlags
+        */
+        static Set<String> GetLong(std::initializer_list<EitherFlag> flags) {
+            Set<String> longFlags;
+            for (const EitherFlag &flag : flags) {
+                if (!flag.isShort) {
+                    longFlags.insert(flag.longFlag);
+                }
+            }
+            return longFlags;
+        }
+
+        /** Get just the short flags from an initializer list of EitherFlags
+        */
+        static Set<Char> GetShort(std::initializer_list<EitherFlag> flags) {
+            Set<Char> shortFlags;
+            for (const EitherFlag &flag : flags) {
+                if (flag.isShort) {
+                    shortFlags.insert(flag.shortFlag);
+                }
+            }
+            return shortFlags;
+        }
+    };
+
+    /** A class of "matchers", specifying short and flags that can possibly be
+     * matched.
+     *
+     * This is supposed to be constructed and then passed in, not used directly
+     * from user code.
+     */
+    class Matcher {
         private:
-            String _prog;
-            String _description;
-            String _epilog;
-            String _long_prefix;
-            String _short_prefix;
-            String _long_separator;
-            String _option_terminator;
-            bool _joined_short;
-            bool _joined_long;
-            bool _separate_short;
-            bool _separate_long;
-
-            class Base {
-                private:
-                    String _name;
-                    String _help;
-
-                    Base(const Base &) = delete;
-
-                public:
-                    Base(const String &name) :
-                        _name(name) {}
-
-                    Base(Base &&other) :
-                        _name(std::move(other._name)),
-                        _help(std::move(other._help)) {}
-
-                    const String &Name() {
-                        return _name;
-                    }
-
-                    Base &Name(const String &name) {
-                        _name = name;
-                        return *this;
-                    }
-
-                    const String &Help() {
-                        return _help;
-                    }
-
-                    Base &Help(const String &help) {
-                        _help = help;
-                        return *this;
-                    }
-            };
-
-            // Need pointers for virtual functions
-            List<std::unique_ptr<Base>> _options;
-
-            template <typename Type>
-            class Option : public Base {
-                private:
-                    Type _value;
-
-                    Option(const Option &) = delete;
-
-                public:
-                    Option(const String &name) :
-                        Base(name) {}
-
-                    Option(Option &&other) :
-                        Base(std::move(other)),
-                        _value(std::move(other.value)) {}
-
-                    Base &Default(const Type &_default) {
-                        _value = _default;
-                        return *this;
-                    }
-            };
-
-            /** A simple unified option type for unified initializer lists for the Matcher class.
-            */
-            struct EitherFlag
-            {
-                const bool isShort;
-                const Char shortFlag;
-                const String longFlag;
-                EitherFlag(const String &flag) : isShort(false), shortFlag(), longFlag(flag) {}
-                EitherFlag(const Char *flag) : isShort(false), shortFlag(), longFlag(flag) {}
-                EitherFlag(const Char flag) : isShort(true), shortFlag(flag), longFlag() {}
-
-                /** Get just the long flags from an initializer list of EitherFlags
-                */
-                static Set<String> GetLong(std::initializer_list<EitherFlag> flags)
-                {
-                    Set<String>  longFlags;
-                    for (const EitherFlag &flag: flags)
-                    {
-                        if (!flag.isShort)
-                        {
-                            longFlags.insert(flag.longFlag);
-                        }
-                    }
-                    return longFlags;
-                }
-
-                /** Get just the short flags from an initializer list of EitherFlags
-                */
-                static Set<Char> GetShort(std::initializer_list<EitherFlag> flags)
-                {
-                    Set<Char>  shortFlags;
-                    for (const EitherFlag &flag: flags)
-                    {
-                        if (flag.isShort)
-                        {
-                            shortFlags.insert(flag.shortFlag);
-                        }
-                    }
-                    return shortFlags;
-                }
-            };
-
-            /** A class of "matchers", specifying short and flags that can possibly be
-             * matched.
-             *
-             * This is supposed to be constructed and then passed in, not used directly
-             * from user code.
-             */
-            class Matcher
-            {
-                private:
-                    const Set<Char> shortFlags;
-                    const Set<String> longFlags;
-
-                public:
-                    /** Specify short and long flags separately as iterators
-                     *
-                     * ex: `args::Matcher(shortFlags.begin(), shortFlags.end(), longFlags.begin(), longFlags.end())`
-                     */
-                    template <typename ShortIt, typename LongIt>
-                        Matcher(ShortIt shortFlagsStart, ShortIt shortFlagsEnd, LongIt longFlagsStart, LongIt longFlagsEnd) :
-                            shortFlags(shortFlagsStart, shortFlagsEnd),
-                            longFlags(longFlagsStart, longFlagsEnd) {}
-
-                    /** Specify short and long flags separately as iterables
-                     *
-                     * ex: `args::Matcher(shortFlags, longFlags)`
-                     */
-                    template <typename Short, typename Long>
-                        Matcher(Short &&shortIn, Long &&longIn) :
-                            shortFlags(std::begin(shortIn), std::end(shortIn)),
-                            longFlags(std::begin(longIn), std::end(longIn)) {}
-
-                    /** Specify a mixed single initializer-list of both short and long flags
-                     *
-                     * This is the fancy one.  It takes a single initializer list of
-                     * any number of any mixed kinds of flags.  Chars are
-                     * automatically interpreted as short flags, and strings are
-                     * automatically interpreted as long flags:
-                     *
-                     *     args::Matcher{'a'}
-                     *     args::Matcher{"foo"}
-                     *     args::Matcher{'h', "help"}
-                     *     args::Matcher{"foo", 'f', 'F', "FoO"}
-                     */
-                    Matcher(std::initializer_list<EitherFlag> in) :
-                        shortFlags(EitherFlag::GetShort(in)),
-                        longFlags(EitherFlag::GetLong(in)) {}
-
-                    Matcher(Matcher &&other) :
-                        shortFlags(std::move(other.shortFlags)),
-                        longFlags(std::move(other.longFlags)) {}
-
-                    ~Matcher() {}
-            };
+        const Set<Char> shortFlags;
+        const Set<String> longFlags;
 
         public:
-            ArgumentParser(const String &description = String{}, const String &epilog = String{}, const String &prog = String{}) :
-                _prog(prog),
-                _description(description),
-                _epilog(epilog),
-                _long_prefix("--"),
-                _short_prefix("-"),
-                _long_separator("="),
-                _option_terminator("--"),
-                _joined_short(true),
-                _joined_long(true),
-                _separate_short(true),
-                _separate_long(true) {}
+        /** Specify short and long flags separately as iterators
+         *
+         * ex: `args::Matcher(shortFlags.begin(), shortFlags.end(),
+         * longFlags.begin(), longFlags.end())`
+         */
+        template <typename ShortIt, typename LongIt>
+        Matcher(ShortIt shortFlagsStart, ShortIt shortFlagsEnd,
+            LongIt longFlagsStart, LongIt longFlagsEnd)
+            : shortFlags(shortFlagsStart, shortFlagsEnd),
+              longFlags(longFlagsStart, longFlagsEnd) {}
 
-            template <typename Value>
-            Option<Value> &AddArgument(const String &name, Matcher matcher) {
-                // Create an option object, add the pointer to a unique pointer
-                // (implying ownership) to the option array, then return a
-                // reference to it.
-                auto opt = new Option<Value>(name);
-                _options.emplace_back(opt);
-                return *opt;
-            }
+        /** Specify short and long flags separately as iterables
+         *
+         * ex: `args::Matcher(shortFlags, longFlags)`
+         */
+        template <typename Short, typename Long>
+        Matcher(Short &&shortIn, Long &&longIn)
+            : shortFlags(std::begin(shortIn), std::end(shortIn)),
+              longFlags(std::begin(longIn), std::end(longIn)) {}
 
-            /** Parse all arguments.
-             *
-             * \param begin an iterator to the beginning of the argument list
-             * \param end an iterator to the past-the-end element of the argument list
-             * \return the iterator after the last parsed value.  Only useful for kick-out
-             */
-            template <typename It>
-            It ParseArgs(It begin, It end)
-            {
-                bool terminated = false;
+        /** Specify a mixed single initializer-list of both short and long flags
+         *
+         * This is the fancy one.  It takes a single initializer list of
+         * any number of any mixed kinds of flags.  Chars are
+         * automatically interpreted as short flags, and strings are
+         * automatically interpreted as long flags:
+         *
+         *     args::Matcher{'a'}
+         *     args::Matcher{"foo"}
+         *     args::Matcher{'h', "help"}
+         *     args::Matcher{"foo", 'f', 'F', "FoO"}
+         */
+        Matcher(std::initializer_list<EitherFlag> in)
+            : shortFlags(EitherFlag::GetShort(in)),
+              longFlags(EitherFlag::GetLong(in)) {}
 
-                // Check all arg chunks
-                for (auto it = begin; it != end; ++it)
-                {
-                    const auto &chunk = *it;
+        Matcher(Matcher &&other)
+            : shortFlags(std::move(other.shortFlags)),
+              longFlags(std::move(other.longFlags)) {}
 
-                    if (!terminated && chunk == _option_terminator)
-                    {
-                        terminated = true;
-                    // If a long arg was found
-                    } else if (!terminated && chunk.find(_long_prefix) == 0 && chunk.size() > _long_prefix.size())
-                    {
-                        const auto argchunk = chunk.substr(_long_prefix.size());
-                        // Try to separate it, in case of a separator:
-                        const auto separator = _long_separator.empty() ? argchunk.npos : argchunk.find(_long_separator);
-                        // If the separator is in the argument, separate it.
-                        const auto arg = (separator != argchunk.npos ?
-                            std::string(argchunk, 0, separator)
-                            : argchunk);
+        ~Matcher() {}
+    };
 
-                        if (auto base = Match(arg))
-                        {
-                            if (auto argbase = dynamic_cast<ValueFlagBase *>(base))
-                            {
-                                if (separator != argchunk.npos)
-                                {
-                                    if (_joined_long)
-                                    {
-                                        argbase->ParseValue(argchunk.substr(separator + _long_separator.size()));
-                                    } else
-                                    {
-#ifdef ARGS_NOEXCEPT
-                                        error = Error::Parse;
-                                        return it;
-#else
-                                        std::ostringstream problem;
-                                        problem << "Flag '" << arg << "' was passed a joined argument, but these are disallowed";
-                                        throw ParseError(problem.str());
-#endif
-                                    }
-                                } else
-                                {
-                                    ++it;
-                                    if (it == end)
-                                    {
-#ifdef ARGS_NOEXCEPT
-                                        error = Error::Parse;
-                                        return it;
-#else
-                                        std::ostringstream problem;
-                                        problem << "Flag '" << arg << "' requires an argument but received none";
-                                        throw ParseError(problem.str());
-#endif
-                                    }
+    class Base {
+        private:
+        String _name;
+        String _help;
 
-                                    if (_separate_long)
-                                    {
-                                        argbase->ParseValue(*it);
-                                    } else
-                                    {
-#ifdef ARGS_NOEXCEPT
-                                        error = Error::Parse;
-                                        return it;
-#else
-                                        std::ostringstream problem;
-                                        problem << "Flag '" << arg << "' was passed a separate argument, but these are disallowed";
-                                        throw ParseError(problem.str());
-#endif
-                                    }
-                                }
-                            } else if (separator != argchunk.npos)
-                            {
-#ifdef ARGS_NOEXCEPT
-                                error = Error::Parse;
-                                return it;
-#else
+        Base(const Base &) = delete;
+
+        public:
+        Base(const String &name) : _name(name) {}
+
+        Base(Base &&other)
+            : _name(std::move(other._name)), _help(std::move(other._help)) {}
+
+        const String &Name() { return _name; }
+
+        Base &Name(const String &name) {
+            _name = name;
+            return *this;
+        }
+
+        const String &Help() { return _help; }
+
+        Base &Help(const String &help) {
+            _help = help;
+            return *this;
+        }
+    };
+
+    class OptionBase : public Base {
+        private:
+        Matcher _matcher;
+
+        OptionBase(const OptionBase &) = delete;
+
+        public:
+        OptionBase(const String &name, Matcher &&matcher)
+            : Base(name), _matcher(std::move(matcher)) {}
+
+        OptionBase(OptionBase &&other) : Base(std::move(other)) {}
+    };
+
+    // The last template parameter is a dummy parameter.  It's an
+    // idiotic hack to work around the fact that explicit specialization
+    // is forbidden outside of namespace scope.
+    template <typename Type, bool dummy = false>
+    class Option : public OptionBase {
+        private:
+        Type _value;
+
+        Option(const Option &) = delete;
+
+        public:
+        Option(const String &name, Matcher &&matcher)
+            : OptionBase(name, std::move(matcher)) {
+            std::cout << "Out of bool" << std::endl;
+        }
+
+        Option(Option &&other)
+            : OptionBase(std::move(other)), _value(std::move(other.value)) {}
+
+        Base &Default(const Type &defaultvalue) {
+            _value = defaultvalue;
+            return *this;
+        }
+    };
+
+    template <bool dummy>
+    class Option<bool, dummy> : public OptionBase {
+        private:
+        bool _value;
+        bool _defaultvalue;
+
+        Option(const Option &) = delete;
+
+        public:
+        Option(const String &name, Matcher &&matcher)
+            : OptionBase(name, std::move(matcher)), _defaultvalue(false) {
+            std::cout << "In bool" << std::endl;
+        }
+
+        Option(Option &&other)
+            : OptionBase(std::move(other)), _value(std::move(other.value)) {}
+
+        Base &Default(bool defaultvalue) {
+            _value = defaultvalue;
+            return *this;
+        }
+    };
+
+    String _prog;
+    String _description;
+    String _epilog;
+    String _long_prefix;
+    String _short_prefix;
+    String _long_separator;
+    String _option_terminator;
+    bool _joined_short;
+    bool _joined_long;
+    bool _separate_short;
+    bool _separate_long;
+
+    // Need pointers for virtual functions
+    List<std::unique_ptr<Base>> _options;
+
+    public:
+    ArgumentParser(const String &description = String{},
+        const String &epilog = String{}, const String &prog = String{})
+        : _prog(prog), _description(description), _epilog(epilog),
+          _long_prefix("--"), _short_prefix("-"), _long_separator("="),
+          _option_terminator("--"), _joined_short(true), _joined_long(true),
+          _separate_short(true), _separate_long(true) {}
+
+    template <typename Value>
+    Option<Value> &AddArgument(const String &name, Matcher matcher) {
+        // Create an option object, add the pointer to a unique pointer
+        // (implying ownership) to the option array, then return a
+        // reference to it.
+        auto opt = new Option<Value>(name, std::move(matcher));
+        _options.emplace_back(opt);
+        return *opt;
+    }
+
+    /** Parse all arguments.
+     *
+     * \param begin an iterator to the beginning of the argument list
+     * \param end an iterator to the past-the-end element of the argument list
+     * \return the iterator after the last parsed value.  Only useful for
+     * kick-out
+     */
+    template <typename It>
+    bool ParseArgs(It begin, It end) {
+        bool terminated = false;
+
+        // Check all arg chunks
+        for (auto it = begin; it != end; ++it) {
+            const auto &chunk = *it;
+
+            if (!terminated && chunk == _option_terminator) {
+                terminated = true;
+                // If a long arg was found
+            } else if (!terminated && chunk.find(_long_prefix) == 0 &&
+                chunk.size() > _long_prefix.size()) {
+                const auto argchunk = chunk.substr(_long_prefix.size());
+                // Try to separate it, in case of a separator:
+                const auto separator = _long_separator.empty()
+                    ? argchunk.npos
+                    : argchunk.find(_long_separator);
+                // If the separator is in the argument, separate it.
+                const auto arg = (separator != argchunk.npos
+                        ? std::string(argchunk, 0, separator)
+                        : argchunk);
+
+                if (auto base = Match(arg)) {
+                    if (auto argbase = dynamic_cast<ValueFlagBase *>(base)) {
+                        if (separator != argchunk.npos) {
+                            if (_joined_long) {
+                                argbase->ParseValue(argchunk.substr(
+                                    separator + _long_separator.size()));
+                            } else {
                                 std::ostringstream problem;
-                                problem << "Passed an argument into a non-argument flag: " << chunk;
-                                throw ParseError(problem.str());
-#endif
+                                problem
+                                    << "Flag '" << arg
+                                    << "' was passed a joined argument, but these are disallowed";
+                                throw std::runtime_error(problem.str());
                             }
-
-                            if (base->KickOut())
-                            {
-                                return ++it;
-                            }
-                        } else
-                        {
-#ifdef ARGS_NOEXCEPT
-                            error = Error::Parse;
-                            return it;
-#else
-                            std::ostringstream problem;
-                            problem << "Flag could not be matched: " << arg;
-                            throw ParseError(problem.str());
-#endif
-                        }
-                        // Check short args
-                    } else if (!terminated && chunk.find(_short_prefix) == 0 && chunk.size() > _short_prefix.size())
-                    {
-                        const auto argchunk = chunk.substr(_short_prefix.size());
-                        for (auto argit = std::begin(argchunk); argit != std::end(argchunk); ++argit)
-                        {
-                            const auto arg = *argit;
-
-                            if (auto base = Match(arg))
-                            {
-                                if (auto argbase = dynamic_cast<ValueFlagBase *>(base))
-                                {
-                                    const std::string value(++argit, std::end(argchunk));
-                                    if (!value.empty())
-                                    {
-                                        if (_joined_short)
-                                        {
-                                            argbase->ParseValue(value);
-                                        } else
-                                        {
-#ifdef ARGS_NOEXCEPT
-                                            error = Error::Parse;
-                                            return it;
-#else
-                                            std::ostringstream problem;
-                                            problem << "Flag '" << arg << "' was passed a joined argument, but these are disallowed";
-                                            throw ParseError(problem.str());
-#endif
-                                        }
-                                    } else
-                                    {
-                                        ++it;
-                                        if (it == end)
-                                        {
-#ifdef ARGS_NOEXCEPT
-                                            error = Error::Parse;
-                                            return it;
-#else
-                                            std::ostringstream problem;
-                                            problem << "Flag '" << arg << "' requires an argument but received none";
-                                            throw ParseError(problem.str());
-#endif
-                                        }
-
-                                        if (_separate_short)
-                                        {
-                                            argbase->ParseValue(*it);
-                                        } else
-                                        {
-#ifdef ARGS_NOEXCEPT
-                                            error = Error::Parse;
-                                            return it;
-#else
-                                            std::ostringstream problem;
-                                            problem << "Flag '" << arg << "' was passed a separate argument, but these are disallowed";
-                                            throw ParseError(problem.str());
-#endif
-                                        }
-                                    }
-                                    // Because this argchunk is done regardless
-                                    break;
-                                }
-
-                                if (base->KickOut())
-                                {
-                                    return ++it;
-                                }
-                            } else
-                            {
-#ifdef ARGS_NOEXCEPT
-                                error = Error::Parse;
-                                return it;
-#else
+                        } else {
+                            ++it;
+                            if (it == end) {
                                 std::ostringstream problem;
-                                problem << "Flag could not be matched: '" << arg << "'";
-                                throw ParseError(problem.str());
-#endif
+                                problem
+                                    << "Flag '" << arg
+                                    << "' requires an argument but received none";
+                                throw std::runtime_error(problem.str());
                             }
-                        }
-                    } else
-                    {
-                        auto pos = GetNextPositional();
-                        if (pos)
-                        {
-                            pos->ParseValue(chunk);
 
-                            if (pos->KickOut())
-                            {
-                                return ++it;
+                            if (_separate_long) {
+                                argbase->ParseValue(*it);
+                            } else {
+                                std::ostringstream problem;
+                                problem
+                                    << "Flag '" << arg
+                                    << "' was passed a separate argument, but these are disallowed";
+                                throw std::runtime_error(problem.str());
                             }
-                        } else
-                        {
-#ifdef ARGS_NOEXCEPT
-                            error = Error::Parse;
-                            return it;
-#else
-                            std::ostringstream problem;
-                            problem << "Passed in argument, but no positional arguments were ready to receive it: " << chunk;
-                            throw ParseError(problem.str());
-#endif
                         }
+                    } else if (separator != argchunk.npos) {
+                        std::ostringstream problem;
+                        problem
+                            << "Passed an argument into a non-argument flag: "
+                            << chunk;
+                        throw std::runtime_error(problem.str());
+                    }
+
+                    if (base->KickOut()) {
+                        return ++it;
+                    }
+                } else {
+                    std::ostringstream problem;
+                    problem << "Flag could not be matched: " << arg;
+                    throw std::runtime_error(problem.str());
+                }
+                // Check short args
+            } else if (!terminated && chunk.find(_short_prefix) == 0 &&
+                chunk.size() > _short_prefix.size()) {
+                const auto argchunk = chunk.substr(_short_prefix.size());
+                for (auto argit = std::begin(argchunk);
+                     argit != std::end(argchunk); ++argit) {
+                    const auto arg = *argit;
+
+                    if (auto base = Match(arg)) {
+                        if (auto argbase =
+                                dynamic_cast<ValueFlagBase *>(base)) {
+                            const std::string value(
+                                ++argit, std::end(argchunk));
+                            if (!value.empty()) {
+                                if (_joined_short) {
+                                    argbase->ParseValue(value);
+                                } else {
+                                    std::ostringstream problem;
+                                    problem
+                                        << "Flag '" << arg
+                                        << "' was passed a joined argument, but these are disallowed";
+                                    throw std::runtime_error(problem.str());
+                                }
+                            } else {
+                                ++it;
+                                if (it == end) {
+                                    std::ostringstream problem;
+                                    problem
+                                        << "Flag '" << arg
+                                        << "' requires an argument but received none";
+                                    throw std::runtime_error(problem.str());
+                                }
+
+                                if (_separate_short) {
+                                    argbase->ParseValue(*it);
+                                } else {
+                                    std::ostringstream problem;
+                                    problem
+                                        << "Flag '" << arg
+                                        << "' was passed a separate argument, but these are disallowed";
+                                    throw std::runtime_error(problem.str());
+                                }
+                            }
+                            // Because this argchunk is done regardless
+                            break;
+                        }
+
+                        if (base->KickOut()) {
+                            return ++it;
+                        }
+                    } else {
+                        std::ostringstream problem;
+                        problem << "Flag could not be matched: '" << arg << "'";
+                        throw std::runtime_error(problem.str());
                     }
                 }
-                if (!Matched())
-                {
-#ifdef ARGS_NOEXCEPT
-                    error = Error::Validation;
-#else
+            } else {
+                auto pos = GetNextPositional();
+                if (pos) {
+                    pos->ParseValue(chunk);
+
+                    if (pos->KickOut()) {
+                        return ++it;
+                    }
+                } else {
                     std::ostringstream problem;
-                    problem << "Group validation failed somewhere!";
-                    throw ValidationError(problem.str());
-#endif
+                    problem
+                        << "Passed in argument, but no positional arguments were ready to receive it: "
+                        << chunk;
+                    throw std::runtime_error(problem.str());
                 }
-                return end;
             }
+        }
+        return end;
+    }
 
-            /** Parse all arguments.
-             *
-             * \param args an iterable of the arguments
-             * \return the iterator after the last parsed value.  Only useful for kick-out
-             */
-            template <typename T>
-            auto ParseArgs(const T &args) -> decltype(std::begin(args))
-            {
-                return ParseArgs(std::begin(args), std::end(args));
-            }
+    /** Parse all arguments.
+     *
+     * \param args an iterable of the arguments
+     * \return the iterator after the last parsed value.  Only useful for
+     * kick-out
+     */
+    template <typename T>
+    auto ParseArgs(const T &args) -> decltype(std::begin(args)) {
+        return ParseArgs(std::begin(args), std::end(args));
+    }
 
-            /** Convenience function to parse the CLI from argc and argv
-             *
-             * Just assigns the program name and vectorizes arguments for passing into ParseArgs()
-             *
-             * \return whether or not all arguments were parsed.  This works for detecting kick-out, but is generally useless as it can't do anything with it.
-             */
-            bool ParseCLI(const int argc, const char * const * argv)
-            {
-                if (_prog.empty())
-                {
-                    _prog = String(argv[0]);
-                }
-                const List<String> args(argv + 1, argv + argc);
-                return ParseArgs(args) == std::end(args);
-            }
-    };
+    /** Convenience function to parse the CLI from argc and argv
+     *
+     * Just assigns the program name and vectorizes arguments for passing into
+     * ParseArgs()
+     *
+     * \return whether or not all arguments were parsed.  This works for
+     * detecting kick-out, but is generally useless as it can't do anything with
+     * it.
+     */
+    bool ParseCLI(const int argc, const char *const *argv) {
+        if (_prog.empty()) {
+            _prog = String(argv[0]);
+        }
+        const List<String> args(argv + 1, argv + argc);
+        return ParseArgs(args);
+    }
+};
 }
 
 #endif

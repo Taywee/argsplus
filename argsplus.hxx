@@ -65,29 +65,29 @@ class ArgumentParser {
      */
     class Matcher {
         private:
-        const Set<Char> shortFlags;
-        const Set<String> longFlags;
+        const Set<Char> _short_flags;
+        const Set<String> _long_flags;
 
         public:
         /** Specify short and long flags separately as iterators
          *
-         * ex: `args::Matcher(shortFlags.begin(), shortFlags.end(),
-         * longFlags.begin(), longFlags.end())`
+         * ex: `args::Matcher(_short_flags.begin(), _short_flags.end(),
+         * _long_flags.begin(), _long_flags.end())`
          */
         template <typename ShortIt, typename LongIt>
-        Matcher(ShortIt shortFlagsStart, ShortIt shortFlagsEnd,
-            LongIt longFlagsStart, LongIt longFlagsEnd)
-            : shortFlags(shortFlagsStart, shortFlagsEnd),
-              longFlags(longFlagsStart, longFlagsEnd) {}
+        Matcher(ShortIt _short_flags_start, ShortIt _short_flags_end,
+            LongIt _long_flags_start, LongIt _long_flags_end)
+            : _short_flags(_short_flags_start, _short_flags_end),
+              _long_flags(_long_flags_start, _long_flags_end) {}
 
         /** Specify short and long flags separately as iterables
          *
-         * ex: `args::Matcher(shortFlags, longFlags)`
+         * ex: `args::Matcher(_short_flags, _long_flags)`
          */
         template <typename Short, typename Long>
         Matcher(Short &&shortIn, Long &&longIn)
-            : shortFlags(std::begin(shortIn), std::end(shortIn)),
-              longFlags(std::begin(longIn), std::end(longIn)) {}
+            : _short_flags(std::begin(shortIn), std::end(shortIn)),
+              _long_flags(std::begin(longIn), std::end(longIn)) {}
 
         /** Specify a mixed single initializer-list of both short and long flags
          *
@@ -102,14 +102,18 @@ class ArgumentParser {
          *     args::Matcher{"foo", 'f', 'F', "FoO"}
          */
         Matcher(std::initializer_list<EitherFlag> in)
-            : shortFlags(EitherFlag::GetShort(in)),
-              longFlags(EitherFlag::GetLong(in)) {}
+            : _short_flags(EitherFlag::GetShort(in)),
+              _long_flags(EitherFlag::GetLong(in)) {}
 
         Matcher(Matcher &&other)
-            : shortFlags(std::move(other.shortFlags)),
-              longFlags(std::move(other.longFlags)) {}
+            : _short_flags(std::move(other._short_flags)),
+              _long_flags(std::move(other._long_flags)) {}
 
         ~Matcher() {}
+
+        bool Match(const Char &flag) {
+            return _short_flags.find(flag) != _short_flags.end();
+        }
     };
 
     class Base {
@@ -214,7 +218,7 @@ class ArgumentParser {
     bool _separate_long;
 
     // Need pointers for virtual functions
-    List<std::unique_ptr<Base>> _options;
+    List<std::unique_ptr<OptionBase>> _options;
 
     public:
     ArgumentParser(const String &description = String{},

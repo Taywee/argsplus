@@ -111,8 +111,12 @@ class ArgumentParser {
 
         ~Matcher() {}
 
-        bool Match(const Char &flag) {
-            return _short_flags.find(flag) != _short_flags.end();
+        bool Match(const Char &flag) const {
+            return _short_flags.find(flag) != std::end(_short_flags);
+        }
+
+        bool Match(const String &flag) const {
+            return _long_flags.find(flag) != std::end(_long_flags);
         }
     };
 
@@ -120,33 +124,44 @@ class ArgumentParser {
         private:
         String _name;
         String _help;
+        bool _matched;
 
         Base(const Base &) = delete;
 
         public:
-        Base(const String &name) : _name(name) {}
+        Base(const String &name) : _name(name), _matched(false) {}
 
         Base(Base &&other)
             : _name(std::move(other._name)), _help(std::move(other._help)) {}
 
-        const String &Name() { return _name; }
+        const String &Name() const { return _name; }
 
         Base &Name(const String &name) {
             _name = name;
             return *this;
         }
 
-        const String &Help() { return _help; }
+        const String &Help() const { return _help; }
 
         Base &Help(const String &help) {
             _help = help;
             return *this;
         }
+
+        bool Matched() const {
+            return _matched;
+        }
+
+        Base &Matched(bool matched) {
+            _matched = matched;
+            return *this;
+        }
+
     };
 
     class OptionBase : public Base {
         private:
-        Matcher _matcher;
+        const Matcher _matcher;
 
         OptionBase(const OptionBase &) = delete;
 
@@ -157,10 +172,7 @@ class ArgumentParser {
         OptionBase(OptionBase &&other) : Base(std::move(other)) {}
     };
 
-    // The last template parameter is a dummy parameter.  It's an
-    // idiotic hack to work around the fact that explicit specialization
-    // is forbidden outside of namespace scope.
-    template <typename Type, bool dummy = false>
+    template <typename Type>
     class Option : public OptionBase {
         private:
         Type _value;
@@ -176,31 +188,20 @@ class ArgumentParser {
         Option(Option &&other)
             : OptionBase(std::move(other)), _value(std::move(other.value)) {}
 
-        Base &Default(const Type &defaultvalue) {
+        const Type &Default() const {
+            return _value;
+        }
+
+        Option &Default(const Type &defaultvalue) {
             _value = defaultvalue;
             return *this;
         }
-    };
-
-    template <bool dummy>
-    class Option<bool, dummy> : public OptionBase {
-        private:
-        bool _value;
-        bool _defaultvalue;
-
-        Option(const Option &) = delete;
-
-        public:
-        Option(const String &name, Matcher &&matcher)
-            : OptionBase(name, std::move(matcher)), _defaultvalue(false) {
-            std::cout << "In bool" << std::endl;
+        const Type &Value() const {
+            return _value;
         }
 
-        Option(Option &&other)
-            : OptionBase(std::move(other)), _value(std::move(other.value)) {}
-
-        Base &Default(bool defaultvalue) {
-            _value = defaultvalue;
+        Option &Value(const Type &value) {
+            _value = value;
             return *this;
         }
     };
@@ -229,7 +230,7 @@ class ArgumentParser {
           _separate_short(true), _separate_long(true) {}
 
     template <typename Value>
-    Option<Value> &AddArgument(const String &name, Matcher matcher) {
+    Option<Value> &AddOption(const String &name, Matcher matcher) {
         // Create an option object, add the pointer to a unique pointer
         // (implying ownership) to the option array, then return a
         // reference to it.

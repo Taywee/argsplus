@@ -9,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <string>
 #include <unordered_set>
 #include <vector>
 
@@ -57,8 +58,8 @@ class ArgumentParser {
         }
     };
 
-    /** A class of "matchers", specifying short and flags that can possibly be
-     * matched.
+    /** A class of "matchers", specifying short and long flags that can possibly
+     * be matched.
      *
      * This is supposed to be constructed and then passed in, not used directly
      * from user code.
@@ -134,6 +135,8 @@ class ArgumentParser {
         Base(Base &&other)
             : _name(std::move(other._name)), _help(std::move(other._help)) {}
 
+        virtual ~Base(){};
+
         const String &Name() const { return _name; }
 
         Base &Name(const String &name) {
@@ -148,15 +151,12 @@ class ArgumentParser {
             return *this;
         }
 
-        bool Matched() const {
-            return _matched;
-        }
+        bool Matched() const { return _matched; }
 
         Base &Matched(bool matched) {
             _matched = matched;
             return *this;
         }
-
     };
 
     class OptionBase : public Base {
@@ -170,10 +170,33 @@ class ArgumentParser {
             : Base(name), _matcher(std::move(matcher)) {}
 
         OptionBase(OptionBase &&other) : Base(std::move(other)) {}
+
+        virtual ~OptionBase(){};
+
+        template <typename T>
+        bool Match(const T &flag) const {
+            return _matcher.Match(flag);
+        }
+    };
+
+    class ValueOptionBase : public OptionBase {
+        private:
+        ValueOptionBase(const ValueOptionBase &) = delete;
+
+        public:
+        ValueOptionBase(const String &name, Matcher &&matcher)
+            : OptionBase(name, std::move(matcher)) {}
+
+        ValueOptionBase(ValueOptionBase &&other)
+            : OptionBase(std::move(other)) {}
+
+        virtual ~ValueOptionBase(){};
+
+        virtual bool ParseValue(const String &value) = 0;
     };
 
     template <typename Type>
-    class Option : public OptionBase {
+    class Option : public ValueOptionBase {
         private:
         Type _value;
 
@@ -181,28 +204,87 @@ class ArgumentParser {
 
         public:
         Option(const String &name, Matcher &&matcher)
-            : OptionBase(name, std::move(matcher)) {
-            std::cout << "Out of bool" << std::endl;
-        }
+            : ValueOptionBase(name, std::move(matcher)) {}
 
         Option(Option &&other)
-            : OptionBase(std::move(other)), _value(std::move(other.value)) {}
+            : ValueOptionBase(std::move(other)),
+              _value(std::move(other.value)) {}
 
-        const Type &Default() const {
-            return _value;
-        }
+        virtual ~Option(){};
+
+        const Type &Default() const { return _value; }
 
         Option &Default(const Type &defaultvalue) {
             _value = defaultvalue;
             return *this;
         }
-        const Type &Value() const {
-            return _value;
-        }
+        const Type &Value() const { return _value; }
 
         Option &Value(const Type &value) {
             _value = value;
             return *this;
+        }
+
+        virtual bool ParseValue(const String &value) override {
+            std::basic_istringstream<Char> ss(value);
+            ss >> _value;
+            if (ss.rdbuf()->in_avail() > 0 || ss.fail()) {
+                return false;
+            }
+            return true;
+        }
+    };
+
+    class PositionalBase : public Base {
+        private:
+        PositionalBase(const PositionalBase &) = delete;
+
+        public:
+        PositionalBase(const String &name) : Base(name) {}
+
+        PositionalBase(PositionalBase &&other) : Base(std::move(other)) {}
+
+        virtual ~PositionalBase(){};
+
+        virtual bool ParseValue(const String &value) = 0;
+    };
+
+    template <typename Type>
+    class Positional : public PositionalBase {
+        private:
+        Type _value;
+
+        Positional(const Positional &) = delete;
+
+        public:
+        Positional(const String &name) : PositionalBase(name) {}
+
+        Positional(Positional &&other)
+            : PositionalBase(std::move(other)), _value(std::move(other.value)) {
+        }
+
+        virtual ~Positional(){};
+
+        const Type &Default() const { return _value; }
+
+        Positional &Default(const Type &defaultvalue) {
+            _value = defaultvalue;
+            return *this;
+        }
+        const Type &Value() const { return _value; }
+
+        Positional &Value(const Type &value) {
+            _value = value;
+            return *this;
+        }
+
+        virtual bool ParseValue(const String &value) override {
+            std::basic_istringstream<Char> ss(value);
+            ss >> _value;
+            if (ss.rdbuf()->in_avail() > 0 || ss.fail()) {
+                return false;
+            }
+            return true;
         }
     };
 
@@ -213,6 +295,8 @@ class ArgumentParser {
     String _short_prefix;
     String _long_separator;
     String _option_terminator;
+    String _error;
+    String _long_error;
     bool _joined_short;
     bool _joined_long;
     bool _separate_short;
@@ -220,6 +304,26 @@ class ArgumentParser {
 
     // Need pointers for virtual functions
     List<std::unique_ptr<OptionBase>> _options;
+    List<std::unique_ptr<PositionalBase>> _positionals;
+
+    template <typename T>
+    OptionBase *MatchOption(const T &flag) {
+        for (const auto &option : _options) {
+            if (option->Match(flag)) {
+                return option.get();
+            }
+        }
+        return nullptr;
+    }
+
+    PositionalBase *GetNextPositional() {
+        for (const auto &positional : _positionals) {
+            if (!positional->Matched()) {
+                return positional.get();
+            }
+        }
+        return nullptr;
+    }
 
     public:
     ArgumentParser(const String &description = String{},
@@ -237,6 +341,13 @@ class ArgumentParser {
         auto opt = new Option<Value>(name, std::move(matcher));
         _options.emplace_back(opt);
         return *opt;
+    }
+
+    template <typename Value>
+    Positional<Value> &AddPositional(const String &name) {
+        auto pos = new Positional<Value>(name);
+        _positionals.emplace_back(pos);
+        return *pos;
     }
 
     /** Parse all arguments.
@@ -265,58 +376,67 @@ class ArgumentParser {
                     ? argchunk.npos
                     : argchunk.find(_long_separator);
                 // If the separator is in the argument, separate it.
-                const auto arg = (separator != argchunk.npos
-                        ? std::string(argchunk, 0, separator)
-                        : argchunk);
+                const auto arg =
+                    (separator != argchunk.npos ? String(argchunk, 0, separator)
+                                                : argchunk);
 
-                if (auto base = Match(arg)) {
-                    if (auto argbase = dynamic_cast<ValueFlagBase *>(base)) {
+                if (auto option = MatchOption(arg)) {
+                    option->Matched(true);
+                    if (auto value_option =
+                            dynamic_cast<ValueOptionBase *>(option)) {
                         if (separator != argchunk.npos) {
                             if (_joined_long) {
-                                argbase->ParseValue(argchunk.substr(
-                                    separator + _long_separator.size()));
+                                if (!value_option->ParseValue(argchunk.substr(
+                                        separator + _long_separator.size()))) {
+                                    _error.assign("Flag '");
+                                    _error.append(arg);
+                                    _error.append(
+                                        "' received an invalid value");
+                                    return false;
+                                }
                             } else {
-                                std::ostringstream problem;
-                                problem
-                                    << "Flag '" << arg
-                                    << "' was passed a joined argument, but these are disallowed";
-                                throw std::runtime_error(problem.str());
+                                _error.assign("Flag '");
+                                _error.append(arg);
+                                _error.append(
+                                    "' was passed a joined argument, but these are disallowed");
+                                return false;
                             }
                         } else {
                             ++it;
                             if (it == end) {
-                                std::ostringstream problem;
-                                problem
-                                    << "Flag '" << arg
-                                    << "' requires an argument but received none";
-                                throw std::runtime_error(problem.str());
+                                _error.assign("Flag '");
+                                _error.append(arg);
+                                _error.append(
+                                    "' requires an argument but received none");
+                                return false;
                             }
 
                             if (_separate_long) {
-                                argbase->ParseValue(*it);
+                                if (!value_option->ParseValue(*it)) {
+                                    _error.assign("Flag '");
+                                    _error.append(arg);
+                                    _error.append(
+                                        "' received an invalid value");
+                                    return false;
+                                }
                             } else {
-                                std::ostringstream problem;
-                                problem
-                                    << "Flag '" << arg
-                                    << "' was passed a separate argument, but these are disallowed";
-                                throw std::runtime_error(problem.str());
+                                _error.assign("Flag '");
+                                _error.append(arg);
+                                _error.append(
+                                    "' was passed a separate argument, but these are disallowed");
+                                return false;
                             }
                         }
                     } else if (separator != argchunk.npos) {
-                        std::ostringstream problem;
-                        problem
-                            << "Passed an argument into a non-argument flag: "
-                            << chunk;
-                        throw std::runtime_error(problem.str());
-                    }
-
-                    if (base->KickOut()) {
-                        return ++it;
+                        _error.assign(
+                            "Passed an argument into a non-argument flag: ");
+                        _error.append(chunk);
+                        return false;
                     }
                 } else {
-                    std::ostringstream problem;
-                    problem << "Flag could not be matched: " << arg;
-                    throw std::runtime_error(problem.str());
+                    _error.assign("Flag could not be matched: ");
+                    _error.append(arg);
+                    return false;
                 }
                 // Check short args
             } else if (!terminated && chunk.find(_short_prefix) == 0 &&
@@ -326,72 +446,81 @@ class ArgumentParser {
                      argit != std::end(argchunk); ++argit) {
                     const auto arg = *argit;
 
-                    if (auto base = Match(arg)) {
-                        if (auto argbase =
-                                dynamic_cast<ValueFlagBase *>(base)) {
-                            const std::string value(
-                                ++argit, std::end(argchunk));
+                    if (auto option = MatchOption(arg)) {
+                        option->Matched(true);
+                        if (auto value_option =
+                                dynamic_cast<ValueOptionBase *>(option)) {
+                            const String value(++argit, std::end(argchunk));
                             if (!value.empty()) {
                                 if (_joined_short) {
-                                    argbase->ParseValue(value);
+                                    if (!value_option->ParseValue(value)) {
+                                        _error.assign("Flag '");
+                                        _error.append(1, arg);
+                                        _error.append(
+                                            "' received an invalid value");
+                                        return false;
+                                    }
                                 } else {
-                                    std::ostringstream problem;
-                                    problem
-                                        << "Flag '" << arg
-                                        << "' was passed a joined argument, but these are disallowed";
-                                    throw std::runtime_error(problem.str());
+                                    _error.assign("Flag '");
+                                    _error.append(1, arg);
+                                    _error.append(
+                                        "' was passed a joined argument, but these are disallowed");
+                                    return false;
                                 }
                             } else {
                                 ++it;
                                 if (it == end) {
-                                    std::ostringstream problem;
-                                    problem
-                                        << "Flag '" << arg
-                                        << "' requires an argument but received none";
-                                    throw std::runtime_error(problem.str());
+                                    _error.assign("Flag '");
+                                    _error.append(1, arg);
+                                    _error.append(
+                                        "' requires an argument but received none");
+                                    return false;
                                 }
 
                                 if (_separate_short) {
-                                    argbase->ParseValue(*it);
+                                    if (!value_option->ParseValue(*it)) {
+                                        _error.assign("Flag '");
+                                        _error.append(1, arg);
+                                        _error.append(
+                                            "' received an invalid value");
+                                        return false;
+                                    }
                                 } else {
-                                    std::ostringstream problem;
-                                    problem
-                                        << "Flag '" << arg
-                                        << "' was passed a separate argument, but these are disallowed";
-                                    throw std::runtime_error(problem.str());
+                                    _error.assign("Flag '");
+                                    _error.append(1, arg);
+                                    _error.append(
+                                        "' was passed a separate argument, but these are disallowed");
+                                    return false;
                                 }
                             }
-                            // Because this argchunk is done regardless
+                            // Because this argchunk is done regardless, because
+                            // a value option flag was just encountered
                             break;
                         }
-
-                        if (base->KickOut()) {
-                            return ++it;
-                        }
                     } else {
-                        std::ostringstream problem;
-                        problem << "Flag could not be matched: '" << arg << "'";
-                        throw std::runtime_error(problem.str());
+                        _error.assign("Flag could not be matched: ");
+                        _error.append(1, arg);
+                        return false;
                     }
                 }
             } else {
-                auto pos = GetNextPositional();
-                if (pos) {
-                    pos->ParseValue(chunk);
-
-                    if (pos->KickOut()) {
-                        return ++it;
+                if (auto pos = GetNextPositional()) {
+                    if (!pos->ParseValue(chunk)) {
+                        _error.assign("Positional '");
+                        _error.append(pos->Name());
+                        _error.append("' received an invalid value");
+                        return false;
                     }
+                    pos->Matched(true);
                 } else {
-                    std::ostringstream problem;
-                    problem
-                        << "Passed in argument, but no positional arguments were ready to receive it: "
-                        << chunk;
-                    throw std::runtime_error(problem.str());
+                    _error.assign(
+                        "Passed in argument, but no positional arguments were ready to receive it: ");
+                    _error.append(chunk);
+                    return false;
                 }
             }
         }
-        return end;
+        return true;
     }
 
     /** Parse all arguments.
@@ -401,7 +530,7 @@ class ArgumentParser {
      * kick-out
      */
     template <typename T>
-    auto ParseArgs(const T &args) -> decltype(std::begin(args)) {
+    bool ParseArgs(const T &args) {
         return ParseArgs(std::begin(args), std::end(args));
     }
 
@@ -421,6 +550,10 @@ class ArgumentParser {
         const List<String> args(argv + 1, argv + argc);
         return ParseArgs(args);
     }
+
+    const String &Error() const { return _error; }
+
+    ArgumentParser &Error(const String &error) { _error = error; }
 };
 }
 

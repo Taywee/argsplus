@@ -10,20 +10,21 @@ AlignOperands: false
 AlignTrailingComments: false
 AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: true
+BreakStringLiterals: false
+BreakStringLiterals: true
 Cpp11BracedListStyle: true
 IndentWidth: 4
-SortIncludes: true
-ReflowComments: true
 PointerAlignment: Right
+ReflowComments: true
+SortIncludes: true
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
 SpaceInEmptyParentheses: false
 SpacesBeforeTrailingComments: 1
 SpacesInAngles: false
 SpacesInParentheses: false
-AllowShortIfStatementsOnASingleLine: false
-BreakStringLiterals: false
-AlwaysBreakTemplateDeclarations: true
 SpacesInSquareBrackets: false
 Standard: Cpp11
 ---

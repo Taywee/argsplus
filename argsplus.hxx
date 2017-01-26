@@ -500,8 +500,8 @@ class ArgumentParser {
                             } else {
                                 _error.assign("Flag '");
                                 _error.append(arg);
-                                _error.append(
-                                    "' was passed a joined argument, but these are disallowed");
+                                _error.append("' was passed a joined argument, "
+                                              "but these are disallowed");
                                 return false;
                             }
                         } else {
@@ -525,8 +525,9 @@ class ArgumentParser {
                             } else {
                                 _error.assign("Flag '");
                                 _error.append(arg);
-                                _error.append(
-                                    "' was passed a separate argument, but these are disallowed");
+                                _error.append("' was passed a separate "
+                                              "argument, but these are "
+                                              "disallowed");
                                 return false;
                             }
                         }
@@ -566,8 +567,9 @@ class ArgumentParser {
                                 } else {
                                     _error.assign("Flag '");
                                     _error.append(1, arg);
-                                    _error.append(
-                                        "' was passed a joined argument, but these are disallowed");
+                                    _error.append("' was passed a joined "
+                                                  "argument, but these are "
+                                                  "disallowed");
                                     return false;
                                 }
                             } else {
@@ -575,8 +577,8 @@ class ArgumentParser {
                                 if (it == end) {
                                     _error.assign("Flag '");
                                     _error.append(1, arg);
-                                    _error.append(
-                                        "' requires an argument but received none");
+                                    _error.append("' requires an argument but "
+                                                  "received none");
                                     return false;
                                 }
 
@@ -591,8 +593,9 @@ class ArgumentParser {
                                 } else {
                                     _error.assign("Flag '");
                                     _error.append(1, arg);
-                                    _error.append(
-                                        "' was passed a separate argument, but these are disallowed");
+                                    _error.append("' was passed a separate "
+                                                  "argument, but these are "
+                                                  "disallowed");
                                     return false;
                                 }
                             }
@@ -616,8 +619,8 @@ class ArgumentParser {
                     }
                     pos->Matched(true);
                 } else {
-                    _error.assign(
-                        "Passed in argument, but no positional arguments were ready to receive it: ");
+                    _error.assign("Passed in argument, but no positional "
+                                  "arguments were ready to receive it: ");
                     _error.append(chunk);
                     return false;
                 }

@@ -7,9 +7,13 @@
 #include <argsplus.hxx>
 
 int main(int argc, char **argv) {
-    argsplus::ArgumentParser<> parser("This is a test program", "This is the big epilogue");
-    auto &doubleflag = parser.AddOption<double>("DUBFLAG", {'d', "double"}).Default(25.0).Help("This is some double flag");
-    auto &pos = parser.AddPositional<unsigned int>("MyPos").Default(17).Help("This is some positional flag");
+    argsplus::ArgumentParser<> parser(
+        "This is a test program", "This is the big epilogue");
+    auto &doubleflag = parser.AddOption<double>("DUBFLAG", {'d', "double"})
+                           .Default(25.0)
+                           .Help("This is some double flag");
+    auto &pos = parser.AddPositional<unsigned int>("MyPos").Default(17).Help(
+        "This is some positional flag");
     if (!parser.ParseCLI(argc, argv)) {
         std::cerr << "Error encountered:\n" << parser.Error() << std::endl;
     }

@@ -173,6 +173,27 @@ class ArgumentParser {
 
         virtual ~OptionBase(){};
 
+        const String &Name() const { return Base::Name(); }
+
+        OptionBase &Name(const String &name) {
+            Base::Name(name);
+            return *this;
+        }
+
+        const String &Help() const { return Base::Help(); }
+
+        OptionBase &Help(const String &help) {
+            Base::Help(help);
+            return *this;
+        }
+
+        bool Matched() const { return Base::Matched(); }
+
+        OptionBase &Matched(bool matched) {
+            Base::Matched(matched);
+            return *this;
+        }
+
         template <typename T>
         bool Match(const T &flag) const {
             return _matcher.Match(flag);
@@ -191,6 +212,27 @@ class ArgumentParser {
             : OptionBase(std::move(other)) {}
 
         virtual ~ValueOptionBase(){};
+
+        const String &Name() const { return OptionBase::Name(); }
+
+        ValueOptionBase &Name(const String &name) {
+            OptionBase::Name(name);
+            return *this;
+        }
+
+        const String &Help() const { return OptionBase::Help(); }
+
+        ValueOptionBase &Help(const String &help) {
+            OptionBase::Help(help);
+            return *this;
+        }
+
+        bool Matched() const { return OptionBase::Matched(); }
+
+        ValueOptionBase &Matched(bool matched) {
+            OptionBase::Matched(matched);
+            return *this;
+        }
 
         virtual bool ParseValue(const String &value) = 0;
     };
@@ -211,6 +253,26 @@ class ArgumentParser {
               _value(std::move(other.value)) {}
 
         virtual ~Option(){};
+        const String &Name() const { return OptionBase::Name(); }
+
+        Option &Name(const String &name) {
+            ValueOptionBase::Name(name);
+            return *this;
+        }
+
+        const String &Help() const { return ValueOptionBase::Help(); }
+
+        Option &Help(const String &help) {
+            ValueOptionBase::Help(help);
+            return *this;
+        }
+
+        bool Matched() const { return ValueOptionBase::Matched(); }
+
+        Option &Matched(bool matched) {
+            ValueOptionBase::Matched(matched);
+            return *this;
+        }
 
         const Type &Default() const { return _value; }
 
@@ -246,6 +308,27 @@ class ArgumentParser {
 
         virtual ~PositionalBase(){};
 
+        const String &Name() const { return Base::Name(); }
+
+        PositionalBase &Name(const String &name) {
+            Base::Name(name);
+            return *this;
+        }
+
+        const String &Help() const { return Base::Help(); }
+
+        PositionalBase &Help(const String &help) {
+            Base::Help(help);
+            return *this;
+        }
+
+        bool Matched() const { return Base::Matched(); }
+
+        PositionalBase &Matched(bool matched) {
+            Base::Matched(matched);
+            return *this;
+        }
+
         virtual bool ParseValue(const String &value) = 0;
     };
 
@@ -264,6 +347,26 @@ class ArgumentParser {
         }
 
         virtual ~Positional(){};
+        const String &Name() const { return OptionBase::Name(); }
+
+        Positional &Name(const String &name) {
+            PositionalBase::Name(name);
+            return *this;
+        }
+
+        const String &Help() const { return PositionalBase::Help(); }
+
+        Positional &Help(const String &help) {
+            PositionalBase::Help(help);
+            return *this;
+        }
+
+        bool Matched() const { return PositionalBase::Matched(); }
+
+        Positional &Matched(bool matched) {
+            PositionalBase::Matched(matched);
+            return *this;
+        }
 
         const Type &Default() const { return _value; }
 

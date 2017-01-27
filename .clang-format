@@ -12,6 +12,8 @@ AllowShortBlocksOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: false
 AlwaysBreakTemplateDeclarations: true
+BreakConstructorInitializersBeforeComma: false
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
 BreakStringLiterals: false
 BreakStringLiterals: true
 Cpp11BracedListStyle: true

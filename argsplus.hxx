@@ -343,8 +343,8 @@ class ArgumentParser {
         Positional(const String &name) : PositionalBase(name) {}
 
         Positional(Positional &&other)
-            : PositionalBase(std::move(other)), _value(std::move(other.value)) {
-        }
+            : PositionalBase(std::move(other)),
+              _value(std::move(other.value)) {}
 
         virtual ~Positional(){};
         const String &Name() const { return OptionBase::Name(); }
@@ -431,10 +431,17 @@ class ArgumentParser {
     public:
     ArgumentParser(const String &description = String{},
         const String &epilog = String{}, const String &prog = String{})
-        : _prog(prog), _description(description), _epilog(epilog),
-          _long_prefix("--"), _short_prefix("-"), _long_separator("="),
-          _option_terminator("--"), _joined_short(true), _joined_long(true),
-          _separate_short(true), _separate_long(true) {}
+        : _prog(prog),
+          _description(description),
+          _epilog(epilog),
+          _long_prefix("--"),
+          _short_prefix("-"),
+          _long_separator("="),
+          _option_terminator("--"),
+          _joined_short(true),
+          _joined_long(true),
+          _separate_short(true),
+          _separate_long(true) {}
 
     template <typename Value>
     Option<Value> &AddOption(const String &name, Matcher matcher) {

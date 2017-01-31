@@ -106,12 +106,6 @@ class ArgumentParser {
             : _short_flags(EitherFlag::GetShort(in)),
               _long_flags(EitherFlag::GetLong(in)) {}
 
-        Matcher(Matcher &&other)
-            : _short_flags(std::move(other._short_flags)),
-              _long_flags(std::move(other._long_flags)) {}
-
-        ~Matcher() {}
-
         bool Match(const Char &flag) const {
             return _short_flags.find(flag) != std::end(_short_flags);
         }
@@ -128,14 +122,14 @@ class ArgumentParser {
         bool _matched;
 
         Base(const Base &) = delete;
+        Base &operator=(const Base &) = delete;
 
         public:
         Base(const String &name) : _name(name), _matched(false) {}
 
-        Base(Base &&other)
-            : _name(std::move(other._name)), _help(std::move(other._help)) {}
-
-        virtual ~Base(){};
+        Base(Base &&other) = default;
+        Base &operator=(Base &&) = default;
+        virtual ~Base() = default;
 
         const String &Name() const { return _name; }
 
@@ -164,30 +158,31 @@ class ArgumentParser {
         const Matcher _matcher;
 
         OptionBase(const OptionBase &) = delete;
+        OptionBase &operator=(const OptionBase &) = delete;
 
         public:
         OptionBase(const String &name, Matcher &&matcher)
             : Base(name), _matcher(std::move(matcher)) {}
 
-        OptionBase(OptionBase &&other) : Base(std::move(other)) {}
+        OptionBase(OptionBase &&other) = default;
+        OptionBase &operator=(OptionBase &&) = default;
+        virtual ~OptionBase() = default;
 
-        virtual ~OptionBase(){};
-
-        const String &Name() const { return Base::Name(); }
+        using Base::Name;
 
         OptionBase &Name(const String &name) {
             Base::Name(name);
             return *this;
         }
 
-        const String &Help() const { return Base::Help(); }
+        using Base::Help;
 
         OptionBase &Help(const String &help) {
             Base::Help(help);
             return *this;
         }
 
-        bool Matched() const { return Base::Matched(); }
+        using Base::Matched;
 
         OptionBase &Matched(bool matched) {
             Base::Matched(matched);
@@ -203,31 +198,31 @@ class ArgumentParser {
     class ValueOptionBase : public OptionBase {
         private:
         ValueOptionBase(const ValueOptionBase &) = delete;
+        ValueOptionBase &operator=(const ValueOptionBase &) = delete;
 
         public:
         ValueOptionBase(const String &name, Matcher &&matcher)
             : OptionBase(name, std::move(matcher)) {}
 
-        ValueOptionBase(ValueOptionBase &&other)
-            : OptionBase(std::move(other)) {}
+        ValueOptionBase(ValueOptionBase &&other) = default;
+        ValueOptionBase &operator=(ValueOptionBase &&) = default;
+        virtual ~ValueOptionBase() = default;
 
-        virtual ~ValueOptionBase(){};
-
-        const String &Name() const { return OptionBase::Name(); }
+        using OptionBase::Name;
 
         ValueOptionBase &Name(const String &name) {
             OptionBase::Name(name);
             return *this;
         }
 
-        const String &Help() const { return OptionBase::Help(); }
+        using OptionBase::Help;
 
         ValueOptionBase &Help(const String &help) {
             OptionBase::Help(help);
             return *this;
         }
 
-        bool Matched() const { return OptionBase::Matched(); }
+        using OptionBase::Matched;
 
         ValueOptionBase &Matched(bool matched) {
             OptionBase::Matched(matched);
@@ -243,31 +238,31 @@ class ArgumentParser {
         Type _value;
 
         Option(const Option &) = delete;
+        Option &operator=(const Option &) = delete;
 
         public:
         Option(const String &name, Matcher &&matcher)
             : ValueOptionBase(name, std::move(matcher)) {}
 
-        Option(Option &&other)
-            : ValueOptionBase(std::move(other)),
-              _value(std::move(other.value)) {}
+        Option(Option &&other) = default;
+        Option &operator=(Option &&) = default;
+        virtual ~Option() = default;
 
-        virtual ~Option(){};
-        const String &Name() const { return OptionBase::Name(); }
+        using ValueOptionBase::Name;
 
         Option &Name(const String &name) {
             ValueOptionBase::Name(name);
             return *this;
         }
 
-        const String &Help() const { return ValueOptionBase::Help(); }
+        using ValueOptionBase::Help;
 
         Option &Help(const String &help) {
             ValueOptionBase::Help(help);
             return *this;
         }
 
-        bool Matched() const { return ValueOptionBase::Matched(); }
+        using ValueOptionBase::Matched;
 
         Option &Matched(bool matched) {
             ValueOptionBase::Matched(matched);
@@ -300,29 +295,30 @@ class ArgumentParser {
     class PositionalBase : public Base {
         private:
         PositionalBase(const PositionalBase &) = delete;
+        PositionalBase &operator=(const PositionalBase &) = delete;
 
         public:
         PositionalBase(const String &name) : Base(name) {}
 
-        PositionalBase(PositionalBase &&other) : Base(std::move(other)) {}
+        PositionalBase(PositionalBase &&other) = default;
+        PositionalBase &operator=(PositionalBase &&) = default;
+        virtual ~PositionalBase() = default;
 
-        virtual ~PositionalBase(){};
-
-        const String &Name() const { return Base::Name(); }
+        using Base::Name;
 
         PositionalBase &Name(const String &name) {
             Base::Name(name);
             return *this;
         }
 
-        const String &Help() const { return Base::Help(); }
+        using Base::Help;
 
         PositionalBase &Help(const String &help) {
             Base::Help(help);
             return *this;
         }
 
-        bool Matched() const { return Base::Matched(); }
+        using Base::Matched;
 
         PositionalBase &Matched(bool matched) {
             Base::Matched(matched);
@@ -338,30 +334,30 @@ class ArgumentParser {
         Type _value;
 
         Positional(const Positional &) = delete;
+        Positional &operator=(const Positional &) = delete;
 
         public:
         Positional(const String &name) : PositionalBase(name) {}
 
-        Positional(Positional &&other)
-            : PositionalBase(std::move(other)),
-              _value(std::move(other.value)) {}
+        Positional(Positional &&other) = default;
+        Positional &operator=(Positional &&) = default;
+        virtual ~Positional() = default;
 
-        virtual ~Positional(){};
-        const String &Name() const { return OptionBase::Name(); }
+        using PositionalBase::Name;
 
         Positional &Name(const String &name) {
             PositionalBase::Name(name);
             return *this;
         }
 
-        const String &Help() const { return PositionalBase::Help(); }
+        using PositionalBase::Help;
 
         Positional &Help(const String &help) {
             PositionalBase::Help(help);
             return *this;
         }
 
-        bool Matched() const { return PositionalBase::Matched(); }
+        using PositionalBase::Matched;
 
         Positional &Matched(bool matched) {
             PositionalBase::Matched(matched);

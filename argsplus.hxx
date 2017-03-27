@@ -115,45 +115,69 @@ class ArgumentParser {
         }
     };
 
-    class Base {
-        private:
+    // This is necessary because all template types need to be stored in the
+    // same container.
+    class Root {
+        protected:
         String _name;
         String _help;
         bool _matched;
+
+        Root(const Root &) = delete;
+        Root &operator=(const Root &) = delete;
+
+        public:
+        Root(const String &name) : _name(name), _matched(false) {}
+        Root(Root &&other) = default;
+        Root &operator=(Root &&) = default;
+        virtual ~Root() = default;
+
+        const String &Name() const { return _name; }
+        const String &Help() const { return _help; }
+        bool Matched() const { return _matched; }
+        void SetName(const String &name) {
+            _name = name;
+        }
+        void SetHelp(const String &help) {
+            _help = help;
+        }
+        void SetMatched(const bool matched) {
+            _matched = matched;
+        }
+    };
+
+    // This takes the inheriting type as a template argument so that the
+    // constructor setters can return a reference to that type.
+    template <typename OptionType>
+    class Base : public Root {
 
         Base(const Base &) = delete;
         Base &operator=(const Base &) = delete;
 
         public:
-        Base(const String &name) : _name(name), _matched(false) {}
+        Base(const String &name) : Root(name) {}
 
         Base(Base &&other) = default;
         Base &operator=(Base &&) = default;
         virtual ~Base() = default;
 
-        const String &Name() const { return _name; }
-
-        Base &Name(const String &name) {
-            _name = name;
-            return *this;
+        OptionType &Name(const String &name) {
+            Root::_name = name;
+            return *static_cast<OptionType *>(this);
         }
 
-        const String &Help() const { return _help; }
-
-        Base &Help(const String &help) {
-            _help = help;
-            return *this;
+        OptionType &Help(const String &help) {
+            Root::_help = help;
+            return *static_cast<OptionType *>(this);
         }
 
-        bool Matched() const { return _matched; }
-
-        Base &Matched(bool matched) {
-            _matched = matched;
-            return *this;
+        OptionType &Matched(bool matched) {
+            Root::_matched = matched;
+            return *static_cast<OptionType *>(this);
         }
     };
 
-    class OptionBase : public Base {
+    class OptionBase {
         private:
         const Matcher _matcher;
 
@@ -161,33 +185,12 @@ class ArgumentParser {
         OptionBase &operator=(const OptionBase &) = delete;
 
         public:
-        OptionBase(const String &name, Matcher &&matcher)
-            : Base(name), _matcher(std::move(matcher)) {}
+        OptionBase(Matcher &&matcher)
+            : _matcher(std::move(matcher)) {}
 
         OptionBase(OptionBase &&other) = default;
         OptionBase &operator=(OptionBase &&) = default;
         virtual ~OptionBase() = default;
-
-        using Base::Name;
-
-        OptionBase &Name(const String &name) {
-            Base::Name(name);
-            return *this;
-        }
-
-        using Base::Help;
-
-        OptionBase &Help(const String &help) {
-            Base::Help(help);
-            return *this;
-        }
-
-        using Base::Matched;
-
-        OptionBase &Matched(bool matched) {
-            Base::Matched(matched);
-            return *this;
-        }
 
         template <typename T>
         bool Match(const T &flag) const {
@@ -195,196 +198,94 @@ class ArgumentParser {
         }
     };
 
-    class ValueOptionBase : public OptionBase {
+    // This is necessary because we need to be able to get a positional or
+    // argument of an unknown type and run ParseValue on it without being able
+    // to deduce the type.
+    class ValueRoot {
         private:
-        ValueOptionBase(const ValueOptionBase &) = delete;
-        ValueOptionBase &operator=(const ValueOptionBase &) = delete;
+        ValueRoot(const ValueRoot &) = delete;
+        ValueRoot &operator=(const ValueRoot &) = delete;
 
         public:
-        ValueOptionBase(const String &name, Matcher &&matcher)
-            : OptionBase(name, std::move(matcher)) {}
-
-        ValueOptionBase(ValueOptionBase &&other) = default;
-        ValueOptionBase &operator=(ValueOptionBase &&) = default;
-        virtual ~ValueOptionBase() = default;
-
-        using OptionBase::Name;
-
-        ValueOptionBase &Name(const String &name) {
-            OptionBase::Name(name);
-            return *this;
-        }
-
-        using OptionBase::Help;
-
-        ValueOptionBase &Help(const String &help) {
-            OptionBase::Help(help);
-            return *this;
-        }
-
-        using OptionBase::Matched;
-
-        ValueOptionBase &Matched(bool matched) {
-            OptionBase::Matched(matched);
-            return *this;
-        }
-
+        ValueRoot() = default;
+        ValueRoot(ValueRoot &&other) = default;
+        ValueRoot &operator=(ValueRoot &&) = default;
+        virtual ~ValueRoot() = default;
         virtual bool ParseValue(const String &value) = 0;
     };
 
-    template <typename Type>
-    class Option : public ValueOptionBase {
+    template <typename OptionType, typename ValueType>
+    class ValueBase : public ValueRoot {
         private:
-        Type _value;
+        ValueBase(const ValueBase &) = delete;
+        ValueBase &operator=(const ValueBase &) = delete;
+        ValueType _value;
 
+        public:
+        ValueBase() = default;
+        ValueBase(ValueBase &&other) = default;
+        ValueBase &operator=(ValueBase &&) = default;
+        virtual ~ValueBase() = default;
+
+        virtual bool ParseValue(const String &value) {
+            std::basic_istringstream<Char> ss(value);
+            ss >> _value;
+            if (ss.rdbuf()->in_avail() > 0 || ss.fail()) {
+                return false;
+            }
+            return true;
+        }
+
+        const ValueType &Default() const { return _value; }
+
+        OptionType &Default(const ValueType &defaultvalue) {
+            _value = defaultvalue;
+            return *static_cast<OptionType *>(this);
+        }
+        const ValueType &Value() const { return _value; }
+
+        OptionType &Value(const ValueType &value) {
+            _value = value;
+            return *static_cast<OptionType *>(this);
+        }
+    };
+
+    template <typename Type>
+    class Option :
+        public Base<Option<Type>>,
+        public OptionBase,
+        public ValueBase<Option<Type>, Type>
+    {
+        private:
+        using BaseType = Base<Option<Type>>;
         Option(const Option &) = delete;
         Option &operator=(const Option &) = delete;
 
         public:
         Option(const String &name, Matcher &&matcher)
-            : ValueOptionBase(name, std::move(matcher)) {}
+            : BaseType(name), OptionBase(std::move(matcher)) {}
 
         Option(Option &&other) = default;
         Option &operator=(Option &&) = default;
         virtual ~Option() = default;
-
-        using ValueOptionBase::Name;
-
-        Option &Name(const String &name) {
-            ValueOptionBase::Name(name);
-            return *this;
-        }
-
-        using ValueOptionBase::Help;
-
-        Option &Help(const String &help) {
-            ValueOptionBase::Help(help);
-            return *this;
-        }
-
-        using ValueOptionBase::Matched;
-
-        Option &Matched(bool matched) {
-            ValueOptionBase::Matched(matched);
-            return *this;
-        }
-
-        const Type &Default() const { return _value; }
-
-        Option &Default(const Type &defaultvalue) {
-            _value = defaultvalue;
-            return *this;
-        }
-        const Type &Value() const { return _value; }
-
-        Option &Value(const Type &value) {
-            _value = value;
-            return *this;
-        }
-
-        virtual bool ParseValue(const String &value) override {
-            std::basic_istringstream<Char> ss(value);
-            ss >> _value;
-            if (ss.rdbuf()->in_avail() > 0 || ss.fail()) {
-                return false;
-            }
-            return true;
-        }
-    };
-
-    class PositionalBase : public Base {
-        private:
-        PositionalBase(const PositionalBase &) = delete;
-        PositionalBase &operator=(const PositionalBase &) = delete;
-
-        public:
-        PositionalBase(const String &name) : Base(name) {}
-
-        PositionalBase(PositionalBase &&other) = default;
-        PositionalBase &operator=(PositionalBase &&) = default;
-        virtual ~PositionalBase() = default;
-
-        using Base::Name;
-
-        PositionalBase &Name(const String &name) {
-            Base::Name(name);
-            return *this;
-        }
-
-        using Base::Help;
-
-        PositionalBase &Help(const String &help) {
-            Base::Help(help);
-            return *this;
-        }
-
-        using Base::Matched;
-
-        PositionalBase &Matched(bool matched) {
-            Base::Matched(matched);
-            return *this;
-        }
-
-        virtual bool ParseValue(const String &value) = 0;
     };
 
     template <typename Type>
-    class Positional : public PositionalBase {
+    class Positional : 
+        public Base<Positional<Type>>,
+        public ValueBase<Positional<Type>, Type>
+    {
         private:
-        Type _value;
-
+        using BaseType = Base<Positional<Type>>;
         Positional(const Positional &) = delete;
         Positional &operator=(const Positional &) = delete;
 
         public:
-        Positional(const String &name) : PositionalBase(name) {}
+        Positional(const String &name) : BaseType(name) {}
 
         Positional(Positional &&other) = default;
         Positional &operator=(Positional &&) = default;
         virtual ~Positional() = default;
-
-        using PositionalBase::Name;
-
-        Positional &Name(const String &name) {
-            PositionalBase::Name(name);
-            return *this;
-        }
-
-        using PositionalBase::Help;
-
-        Positional &Help(const String &help) {
-            PositionalBase::Help(help);
-            return *this;
-        }
-
-        using PositionalBase::Matched;
-
-        Positional &Matched(bool matched) {
-            PositionalBase::Matched(matched);
-            return *this;
-        }
-
-        const Type &Default() const { return _value; }
-
-        Positional &Default(const Type &defaultvalue) {
-            _value = defaultvalue;
-            return *this;
-        }
-        const Type &Value() const { return _value; }
-
-        Positional &Value(const Type &value) {
-            _value = value;
-            return *this;
-        }
-
-        virtual bool ParseValue(const String &value) override {
-            std::basic_istringstream<Char> ss(value);
-            ss >> _value;
-            if (ss.rdbuf()->in_avail() > 0 || ss.fail()) {
-                return false;
-            }
-            return true;
-        }
     };
 
     String _prog;
@@ -403,7 +304,7 @@ class ArgumentParser {
 
     // Need pointers for virtual functions
     List<std::unique_ptr<OptionBase>> _options;
-    List<std::unique_ptr<PositionalBase>> _positionals;
+    List<std::unique_ptr<ValueRoot>> _positionals;
 
     template <typename T>
     OptionBase *MatchOption(const T &flag) {
@@ -415,9 +316,10 @@ class ArgumentParser {
         return nullptr;
     }
 
-    PositionalBase *GetNextPositional() {
+    ValueRoot *GetNextPositional() {
         for (const auto &positional : _positionals) {
-            if (!positional->Matched()) {
+            auto root = dynamic_cast<Root *>(positional.get());
+            if (!root->Matched()) {
                 return positional.get();
             }
         }
@@ -487,9 +389,10 @@ class ArgumentParser {
                                                 : argchunk);
 
                 if (auto option = MatchOption(arg)) {
-                    option->Matched(true);
+                    auto root = dynamic_cast<Root *>(option);
+                    root->SetMatched(true);
                     if (auto value_option =
-                            dynamic_cast<ValueOptionBase *>(option)) {
+                            dynamic_cast<ValueRoot *>(option)) {
                         if (separator != argchunk.npos) {
                             if (_joined_long) {
                                 if (!value_option->ParseValue(argchunk.substr(
@@ -554,9 +457,10 @@ class ArgumentParser {
                     const auto arg = *argit;
 
                     if (auto option = MatchOption(arg)) {
-                        option->Matched(true);
+                        auto root = dynamic_cast<Root *>(option);
+                        root->SetMatched(true);
                         if (auto value_option =
-                                dynamic_cast<ValueOptionBase *>(option)) {
+                                dynamic_cast<ValueRoot *>(option)) {
                             const String value(++argit, std::end(argchunk));
                             if (!value.empty()) {
                                 if (_joined_short) {
@@ -614,13 +518,14 @@ class ArgumentParser {
                 }
             } else {
                 if (auto pos = GetNextPositional()) {
+                    auto root = dynamic_cast<Root *>(pos);
                     if (!pos->ParseValue(chunk)) {
                         _error.assign("Positional '");
-                        _error.append(pos->Name());
+                        _error.append(root->Name());
                         _error.append("' received an invalid value");
                         return false;
                     }
-                    pos->Matched(true);
+                    root->SetMatched(true);
                 } else {
                     _error.assign("Passed in argument, but no positional "
                                   "arguments were ready to receive it: ");

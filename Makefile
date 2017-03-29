@@ -1,11 +1,13 @@
 OS = $(shell uname -s)
 
+DEBUG=true
+
 CC 			?= 	cc
 CXX			?= 	c++
 DESTDIR		?= 	/usr/local
 FLAGS 		+= 	-std=c++11
 ifdef DEBUG
-FLAGS		+=	-ggdb -O0
+FLAGS		+=	-ggdb -O0 -fsanitize=address
 else
 FLAGS		+=	-O2
 endif
